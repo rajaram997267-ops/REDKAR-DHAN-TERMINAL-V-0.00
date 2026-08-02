@@ -703,6 +703,18 @@ _option_debug: dict = {}
 DHAN_INSTRUMENTS_URL = "https://images.dhan.co/api-data/api-scrip-master-detailed.csv"
 
 
+def _dhan_headers(access_token: str) -> dict:
+    """Dhan requires BOTH access-token AND client-id on every market-data/
+    order call - confirmed via a live 401 ("ClientId is invalid") when only
+    access-token was sent. Reads dhan_client_id from settings so every call
+    site gets this consistently without needing its own parameter."""
+    return {
+        "access-token": access_token,
+        "client-id": get_setting("dhan_client_id", ""),
+        "Content-Type": "application/json",
+    }
+
+
 def _load_instrument_master() -> None:
     """Downloads Dhan's public detailed scrip master CSV once per IST day
     and builds two lookups: NSE-equity symbol -> securityId, and
@@ -883,7 +895,7 @@ def _load_prev_closes_background(access_token: str) -> None:
         req = urllib.request.Request(
             "https://api.dhan.co/v2/charts/historical",
             data=json.dumps(body).encode(), method="POST",
-            headers={"access-token": access_token, "Content-Type": "application/json"},
+            headers=_dhan_headers(access_token),
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -954,7 +966,7 @@ def _fetch_sector_performance(access_token: str) -> dict | None:
     req = urllib.request.Request(
         "https://api.dhan.co/v2/marketfeed/ltp",
         data=json.dumps(body).encode(), method="POST",
-        headers={"access-token": access_token, "Content-Type": "application/json"},
+        headers=_dhan_headers(access_token),
     )
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
@@ -1033,7 +1045,7 @@ def fetch_5min_candles(instrument_key: str, access_token: str) -> list[tuple[flo
     req = urllib.request.Request(
         "https://api.dhan.co/v2/charts/intraday",
         data=json.dumps(body).encode(), method="POST",
-        headers={"access-token": access_token, "Content-Type": "application/json"},
+        headers=_dhan_headers(access_token),
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
         payload = json.loads(resp.read().decode())
@@ -1048,7 +1060,7 @@ def get_dhan_available_funds(access_token: str) -> float | None:
     global _funds_debug
     req = urllib.request.Request(
         "https://api.dhan.co/v2/fundlimit",
-        headers={"access-token": access_token, "Accept": "application/json"},
+        headers=_dhan_headers(access_token),
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -1095,7 +1107,7 @@ def get_ltp(instrument_key: str, access_token: str) -> float | None:
     req = urllib.request.Request(
         "https://api.dhan.co/v2/marketfeed/ltp",
         data=json.dumps(body).encode(), method="POST",
-        headers={"access-token": access_token, "Content-Type": "application/json"},
+        headers=_dhan_headers(access_token),
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -1490,9 +1502,12 @@ def paper_trading_data():
 def paper_trading_settings():
     data = request.get_json(silent=True) or {}
     token = (data.get("access_token") or "").strip()
+    client_id = (data.get("client_id") or "").strip()
     if not token:
         return jsonify({"status": "error", "message": "No token provided"}), 400
     set_setting("dhan_access_token", token)
+    if client_id:
+        set_setting("dhan_client_id", client_id)
     return jsonify({"status": "ok"})
 
 
