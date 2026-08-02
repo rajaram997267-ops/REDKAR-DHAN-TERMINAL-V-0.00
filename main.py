@@ -1086,7 +1086,11 @@ def get_dhan_available_funds_for_display(access_token: str) -> float | None:
     return value
 
 
+_ltp_debug: dict = {"ok": None, "error": None, "raw": None}
+
+
 def get_ltp(instrument_key: str, access_token: str) -> float | None:
+    global _ltp_debug
     body = {"NSE_FNO": [int(instrument_key)]}
     req = urllib.request.Request(
         "https://api.dhan.co/v2/marketfeed/ltp",
@@ -1097,8 +1101,18 @@ def get_ltp(instrument_key: str, access_token: str) -> float | None:
         with urllib.request.urlopen(req, timeout=10) as resp:
             payload = json.loads(resp.read().decode())
         entry = (payload.get("data") or {}).get("NSE_FNO", {}).get(str(instrument_key)) or {}
-        return entry.get("last_price")
-    except Exception:
+        price = entry.get("last_price")
+        _ltp_debug = {"ok": price is not None, "error": None if price is not None else f"No last_price in response: {payload}", "raw": payload}
+        return price
+    except urllib.error.HTTPError as e:
+        try:
+            body_text = e.read().decode("utf-8", errors="replace")[:500]
+        except Exception:
+            body_text = ""
+        _ltp_debug = {"ok": False, "error": f"HTTP {e.code}: {body_text}", "raw": None}
+        return None
+    except Exception as e:
+        _ltp_debug = {"ok": False, "error": str(e), "raw": None}
         return None
 
 
@@ -1592,6 +1606,21 @@ def debug_atm():
         "atm_call": get_atm_option(symbol, "CE", price),
         "atm_put": get_atm_option(symbol, "PE", price),
     })
+
+
+@app.route("/api/paper-trading/debug-ltp")
+def debug_ltp():
+    """Diagnostic-only: calls get_ltp() for a given instrument_key using the
+    saved Dhan token and shows the real response or error - e.g.
+    /api/paper-trading/debug-ltp?instrument_key=859560"""
+    instrument_key = request.args.get("instrument_key", "")
+    access_token = get_setting("dhan_access_token")
+    if not access_token:
+        return jsonify({"ok": False, "error": "No Dhan access token saved"})
+    if not instrument_key:
+        return jsonify({"ok": False, "error": "Pass ?instrument_key=X in the URL"})
+    value = get_ltp(instrument_key, access_token)
+    return jsonify({"value": value, **_ltp_debug})
 
 
 @app.route("/api/paper-trading/debug-funds")
