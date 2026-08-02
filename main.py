@@ -709,10 +709,17 @@ def _load_instrument_master() -> None:
     underlying -> list of option contracts (strike/expiry/opt_type/
     securityId/lot_size).
 
-    NOTE: column names below (SEM_*) are Dhan's documented ones but
-    haven't been confirmed against a live download - check
-    /api/paper-trading/debug-instruments after first deploy and fix names
-    here if matched_count / option_rows_matched come back 0."""
+    NOTE: column names below were confirmed directly against a live
+    /api/paper-trading/debug-instruments response on 2026-08-02 - Dhan's
+    file does NOT use a "SEM_" prefix (only SM_EXPIRY_DATE keeps a short
+    prefix). Real header list: EXCH_ID, SEGMENT, SECURITY_ID, ISIN,
+    INSTRUMENT, UNDERLYING_SECURITY_ID, UNDERLYING_SYMBOL, SYMBOL_NAME,
+    DISPLAY_NAME, INSTRUMENT_TYPE, SERIES, LOT_SIZE, SM_EXPIRY_DATE,
+    STRIKE_PRICE, OPTION_TYPE, TICK_SIZE, ... If matched_count or
+    option_rows_matched still come back 0 after this fix, re-check
+    /api/paper-trading/debug-instruments's sample_rows for an actual
+    equity row (the earlier debug output only showed BSE currency
+    futures samples, not a confirmed NSE equity row)."""
     global _instrument_cache, _instrument_cache_date, _instrument_debug
     global _option_chain_cache, _option_debug
     try:
@@ -727,6 +734,7 @@ def _load_instrument_master() -> None:
         option_chains: dict[str, list[dict]] = {}
         sample_rows = []
         fo_sample_rows = []
+        equity_sample_rows = []
         row_count = 0
         option_row_count = 0
 
@@ -734,33 +742,31 @@ def _load_instrument_master() -> None:
             row_count = i + 1
             if i < 3:
                 sample_rows.append(dict(row))
-            exch = (row.get("SEM_EXM_EXCH_ID") or "").upper()
-            instr = (row.get("SEM_INSTRUMENT_NAME") or "").upper()
-            sec_id = row.get("SEM_SMST_SECURITY_ID")
-            tsym = (row.get("SEM_TRADING_SYMBOL") or "").upper()
+            exch = (row.get("EXCH_ID") or "").upper()
+            instr = (row.get("INSTRUMENT") or "").upper()
+            sec_id = row.get("SECURITY_ID")
+            tsym = (row.get("SYMBOL_NAME") or "").upper()
 
             if exch == "NSE" and instr == "EQUITY" and tsym and sec_id:
                 mapping[tsym] = sec_id
+                if len(equity_sample_rows) < 3:
+                    equity_sample_rows.append(dict(row))
             elif instr in ("OPTSTK", "OPTIDX") and sec_id:
                 if len(fo_sample_rows) < 3:
                     fo_sample_rows.append(dict(row))
-                opt_type = (row.get("SEM_OPTION_TYPE") or "").upper()
+                opt_type = (row.get("OPTION_TYPE") or "").upper()
                 if opt_type not in ("CE", "PE"):
                     continue
-                underlying = (
-                    row.get("SEM_UNDERLYING_SYMBOL")
-                    or row.get("SEM_TRADING_SYMBOL", "").split("-")[0]
-                    or ""
-                ).upper()
+                underlying = (row.get("UNDERLYING_SYMBOL") or "").upper()
                 try:
-                    strike = float(row.get("SEM_STRIKE_PRICE") or 0) or None
+                    strike = float(row.get("STRIKE_PRICE") or 0) or None
                 except (TypeError, ValueError):
                     strike = None
                 try:
-                    lot_size = int(float(row.get("SEM_LOT_UNITS") or 0)) or None
+                    lot_size = int(float(row.get("LOT_SIZE") or 0)) or None
                 except (TypeError, ValueError):
                     lot_size = None
-                expiry = (row.get("SEM_EXPIRY_DATE") or "")[:10] or None
+                expiry = (row.get("SM_EXPIRY_DATE") or "")[:10] or None
 
                 if underlying and strike and expiry and lot_size and sec_id:
                     option_row_count += 1
@@ -780,6 +786,7 @@ def _load_instrument_master() -> None:
             "raw_bytes_len": len(raw_bytes),
             "fieldnames": fieldnames,
             "sample_rows": sample_rows,
+            "equity_sample_rows": equity_sample_rows,
             "total_rows_scanned": row_count,
             "matched_count": len(mapping),
             "error": None,
