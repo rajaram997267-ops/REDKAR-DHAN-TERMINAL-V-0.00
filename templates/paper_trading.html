@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RTT v0.0 - Paper Trading</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --panel: #131722;
+      --border: #1e222d;
+      --text: #e6e9f0;
+      --muted: #6b7280;
+      --green: #00c896;
+      --gold: #ffb800;
+      --red: #ff5370;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 24px;
+    }
+    a { color: var(--green); text-decoration: none; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    h2 { margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; }
+    .stats {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      min-width: 120px;
+    }
+    .stat-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+    .stat-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+    .value.pos { color: var(--green); }
+    .value.neg { color: var(--red); }
+    .settings-box {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .settings-box input[type=text] {
+      flex: 1;
+      min-width: 240px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: monospace;
+    }
+    button {
+      background: var(--green);
+      color: #06110d;
+      border: none;
+      padding: 9px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    button.secondary {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button:hover { opacity: 0.9; }
+    .token-status {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .token-status.saved { color: var(--green); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 28px;
+    }
+    th, td {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    tr:last-child td { border-bottom: none; }
+    .direction-buy { color: var(--green); font-weight: 600; }
+    .direction-sell { color: var(--red); font-weight: 600; }
+    .pnl-pos { color: var(--green); font-weight: 600; }
+    .pnl-neg { color: var(--red); font-weight: 600; }
+    .empty {
+      padding: 30px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 24px;
+    }
+    .error-note { color: var(--red); font-size: 12px; }
+    .section-title {
+      font-size: 15px;
+      margin: 0 0 12px;
+    }
+    .check-status {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+      flex: none;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: var(--border);
+      transition: .2s;
+      border-radius: 22px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px; width: 16px;
+      left: 3px; bottom: 3px;
+      background-color: var(--text);
+      transition: .2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider { background-color: var(--red); }
+    input:checked + .slider:before { transform: translateX(18px); }
+    .live-badge {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .live-OPEN { background: rgba(0, 200, 150, 0.15); color: var(--green); }
+    .live-FAILED { background: rgba(255, 83, 112, 0.15); color: var(--red); }
+    .live-CLOSED { background: rgba(255, 184, 0, 0.15); color: var(--gold); }
+    .live-NONE { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <h2>Paper Trading <span style="color: var(--muted); font-weight: 400; font-size: 14px;">RTT v0.0</span></h2>
+      <div class="sub"><a href="/">&larr; Back to alerts dashboard</a></div>
+    </div>
+    <div class="controls">
+      <button onclick="runCheckNow()">Check Exits Now</button>
+      <span class="check-status" id="checkStatus"></span>
+    </div>
+  </div>
+
+  <div class="settings-box">
+    <span>Upstox access token:</span>
+    <input type="text" id="tokenInput" placeholder="Paste today's Upstox access token here">
+    <button class="secondary" onclick="saveToken()">Save token</button>
+    <span class="token-status {% if token_saved %}saved{% endif %}" id="tokenStatus">
+      {% if token_saved %}Token saved for today{% else %}No token saved yet{% endif %}
+    </span>
+  </div>
+
+  <div class="settings-box">
+    <span>Starting capital (Rs):</span>
+    <input type="text" id="capitalInput" style="max-width: 160px; flex: none;" value="{{ capital|int }}">
+    <button class="secondary" onclick="saveCapital()">Save amount</button>
+    <span class="token-status" id="capitalStatus">Only used to seed the account - once trades start closing, the balance compounds automatically</span>
+    <button style="background: var(--red); margin-left: auto;" onclick="resetPaperTrading()">Reset paper trading</button>
+  </div>
+
+  <div class="settings-box" style="border-color: {% if live_trading_enabled %}var(--red){% else %}var(--border){% endif %};">
+    <label class="switch">
+      <input type="checkbox" id="liveToggle" {% if live_trading_enabled %}checked{% endif %} onchange="toggleLiveTrading()">
+      <span class="slider"></span>
+    </label>
+    <span>Live trading (real Upstox orders)</span>
+    <span class="token-status" id="liveStatus" style="{% if live_trading_enabled %}color: var(--red);{% endif %}">
+      {% if live_trading_enabled %}ON - Buy alerts buy the ATM Call, Sell alerts buy the ATM Put (nearest monthly expiry), lots sized off your Upstox available funds{% else %}OFF - paper trading only{% endif %}
+    </span>
+  </div>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">Current capital (Rs)</div>
+      <div class="value {% if current_capital > capital %}pos{% elif current_capital < capital %}neg{% endif %}" id="statCurrentCapital">{{ current_capital }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Open trade</div>
+      <div class="value" id="statOpen">{{ open_trades|length }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Closed trades</div>
+      <div class="value" id="statClosed">{{ total_closed }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Win rate</div>
+      <div class="value" id="statWinRate">{{ win_rate }}%</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Total P&amp;L (Rs)</div>
+      <div class="value {% if total_pnl > 0 %}pos{% elif total_pnl < 0 %}neg{% endif %}" id="statPnl">{{ total_pnl }}</div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat-card" style="border-color: var(--red);">
+      <div class="label">Upstox available funds (Rs)</div>
+      <div class="value" id="statLiveFunds">{{ live_available_funds if live_available_funds is not none else "-" }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Live open</div>
+      <div class="value" id="statLiveOpen">{{ live_open }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Live closed</div>
+      <div class="value" id="statLiveClosed">{{ live_closed }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Live P&amp;L (Rs)</div>
+      <div class="value {% if live_pnl > 0 %}pos{% elif live_pnl < 0 %}neg{% endif %}" id="statLivePnl">{{ live_pnl }}</div>
+    </div>
+  </div>
+
+  <h3 class="section-title">Open trade <span style="font-size:11px; color: var(--muted); font-weight: normal;">(only one at a time - new alerts are ignored until this exits)</span></h3>
+  <div id="openTradesContainer">
+    {% if open_trades %}
+    <table>
+      <tr>
+        <th>Symbol</th><th>Direction</th><th>Qty</th><th>Entry price</th><th>Entry time</th>
+        <th>Last checked price</th><th>Unrealized P&amp;L (Rs)</th><th>P&amp;L %</th><th>Last checked</th><th>Note</th><th>Live</th><th></th>
+      </tr>
+      {% for t in open_trades %}
+      <tr>
+        <td>{{ t.symbol }}{% if t.paper_option_label %}<div class="sub" style="font-size:11px;" title="{{ t.paper_option_label }}">{{ t.paper_option_label }}</div>{% endif %}</td>
+        <td class="direction-{{ t.direction|lower }}">{{ t.direction }}</td>
+        <td>{{ t.quantity }}</td>
+        <td>{{ t.entry_price }}</td>
+        <td>{{ t.entry_time[:19] }}</td>
+        <td>{{ t.last_checked_price or "-" }}</td>
+        <td class="{% if t.unrealized_pnl and t.unrealized_pnl > 0 %}pnl-pos{% elif t.unrealized_pnl and t.unrealized_pnl < 0 %}pnl-neg{% endif %}">{{ t.unrealized_pnl if t.unrealized_pnl is not none else "-" }}</td>
+        <td class="{% if t.unrealized_pnl_pct and t.unrealized_pnl_pct > 0 %}pnl-pos{% elif t.unrealized_pnl_pct and t.unrealized_pnl_pct < 0 %}pnl-neg{% endif %}">{{ t.unrealized_pnl_pct if t.unrealized_pnl_pct is not none else "-" }}{% if t.unrealized_pnl_pct is not none %}%{% endif %}</td>
+        <td>{{ (t.last_checked_time or "")[:19] }}</td>
+        <td class="error-note">{{ t.last_error or "" }}</td>
+        <td>
+          <span class="live-badge live-{{ t.live_status or 'NONE' }}">{{ t.live_status or 'NONE' }}</span>
+          {% if t.live_option_label %}<div class="sub" style="font-size:11px;" title="{{ t.live_option_label }}">{{ t.live_option_label }} &middot; {{ t.live_quantity }} qty</div>{% elif t.live_quantity %}<div class="sub" style="font-size:11px;">{{ t.live_quantity }} qty</div>{% endif %}
+          {% if t.live_error %}<div class="error-note" title="{{ t.live_error }}">{{ t.live_error[:30] }}{% if t.live_error|length > 30 %}...{% endif %}</div>{% endif %}
+        </td>
+        <td><button class="secondary" style="padding: 5px 10px; font-size: 11px;" onclick="manualExit({{ t.id }})">Exit Now</button></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No open paper trades yet. They're created automatically from Buy/Sell alerts.</div>
+    {% endif %}
+  </div>
+
+  <h3 class="section-title">Closed trades <span style="font-size:11px; color: var(--muted); font-weight: normal;">(Balance after shows the compounding progression)</span></h3>
+  <div id="closedTradesContainer">
+    {% if closed_trades %}
+    <table>
+      <tr>
+        <th>Symbol</th><th>Direction</th><th>Qty</th><th>Entry</th><th>Exit</th>
+        <th>P&amp;L (Rs)</th><th>P&amp;L %</th><th>Balance after (Rs)</th><th>Exit reason</th><th>Exit time</th><th>Live</th>
+      </tr>
+      {% for t in closed_trades %}
+      <tr>
+        <td>{{ t.symbol }}{% if t.paper_option_label %}<div class="sub" style="font-size:11px;" title="{{ t.paper_option_label }}">{{ t.paper_option_label }}</div>{% endif %}</td>
+        <td class="direction-{{ t.direction|lower }}">{{ t.direction }}</td>
+        <td>{{ t.quantity }}</td>
+        <td>{{ t.entry_price }}</td>
+        <td>{{ t.exit_price }}</td>
+        <td class="{% if t.pnl and t.pnl > 0 %}pnl-pos{% elif t.pnl and t.pnl < 0 %}pnl-neg{% endif %}">{{ t.pnl }}</td>
+        <td class="{% if t.pnl_pct and t.pnl_pct > 0 %}pnl-pos{% elif t.pnl_pct and t.pnl_pct < 0 %}pnl-neg{% endif %}">{{ t.pnl_pct if t.pnl_pct is not none else "-" }}{% if t.pnl_pct is not none %}%{% endif %}</td>
+        <td>{{ t.balance_after }}</td>
+        <td>{{ t.exit_reason }}</td>
+        <td>{{ (t.exit_time or "")[:19] }}</td>
+        <td>
+          <span class="live-badge live-{{ t.live_status or 'NONE' }}">{{ t.live_status or 'NONE' }}</span>
+          {% if t.live_option_label %}<div class="sub" style="font-size:11px;" title="{{ t.live_option_label }}">{{ t.live_option_label }} &middot; {{ t.live_quantity }} qty</div>{% elif t.live_quantity %}<div class="sub" style="font-size:11px;">{{ t.live_quantity }} qty</div>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No closed trades yet.</div>
+    {% endif %}
+  </div>
+
+  <script>
+    async function saveToken() {
+      const token = document.getElementById("tokenInput").value.trim();
+      if (!token) return;
+      const res = await fetch("/api/paper-trading/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: token }),
+      });
+      const statusEl = document.getElementById("tokenStatus");
+      if (res.ok) {
+        statusEl.textContent = "Token saved for today";
+        statusEl.classList.add("saved");
+        document.getElementById("tokenInput").value = "";
+      } else {
+        statusEl.textContent = "Failed to save token";
+        statusEl.classList.remove("saved");
+      }
+    }
+
+    async function toggleLiveTrading() {
+      const checkbox = document.getElementById("liveToggle");
+      const statusEl = document.getElementById("liveStatus");
+      const enabled = checkbox.checked;
+      if (enabled && !confirm(
+        "This turns ON live trading. The NEXT Buy alert will place a real " +
+        "ATM option order on Upstox (Call for Buy alerts, Put for Sell alerts), sized off your actual available funds. Continue?"
+      )) {
+        checkbox.checked = false;
+        return;
+      }
+      try {
+        const res = await fetch("/api/paper-trading/live-toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        });
+        const result = await res.json();
+        statusEl.textContent = result.live_trading_enabled
+          ? "ON - Buy alerts buy the ATM Call, Sell alerts buy the ATM Put (nearest monthly expiry), lots sized off your Upstox available funds"
+          : "OFF - paper trading only";
+        statusEl.style.color = result.live_trading_enabled ? "var(--red)" : "";
+      } catch (err) {
+        statusEl.textContent = "Failed to update - see console";
+        checkbox.checked = !enabled;
+        console.error(err);
+      }
+    }
+
+    async function saveCapital() {
+      const amount = parseFloat(document.getElementById("capitalInput").value);
+      const statusEl = document.getElementById("capitalStatus");
+      if (!amount || amount <= 0) {
+        statusEl.textContent = "Enter a valid amount greater than 0";
+        return;
+      }
+      const res = await fetch("/api/paper-trading/capital", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ capital: amount }),
+      });
+      if (res.ok) {
+        statusEl.textContent = `Saved - Rs ${amount} starting capital`;
+      } else {
+        statusEl.textContent = "Failed to save amount";
+      }
+    }
+
+    async function resetPaperTrading() {
+      if (!confirm("This deletes ALL paper trades (open and closed) and restarts from your starting capital. Continue?")) {
+        return;
+      }
+      const res = await fetch("/api/paper-trading/reset", { method: "POST" });
+      if (res.ok) {
+        location.reload();
+      } else {
+        alert("Reset failed - see console");
+      }
+    }
+
+    async function runCheckNow() {
+      const statusEl = document.getElementById("checkStatus");
+      statusEl.textContent = "Checking...";
+      try {
+        const res = await fetch("/api/paper-trading/check", { method: "POST" });
+        const result = await res.json();
+        if (result.error) {
+          statusEl.textContent = result.error;
+        } else {
+          statusEl.textContent = `Checked ${result.checked}, closed ${result.closed}` +
+            (result.errors && result.errors.length ? ` (${result.errors.length} errors)` : "");
+        }
+        await refreshTrades();
+      } catch (err) {
+        statusEl.textContent = "Check failed - see console";
+        console.error(err);
+      }
+    }
+
+    async function manualExit(tradeId) {
+      if (!confirm("Exit this trade now at the last known price?")) return;
+      try {
+        const res = await fetch(`/api/paper-trading/manual-exit/${tradeId}`, { method: "POST" });
+        const result = await res.json();
+        if (!res.ok) {
+          alert(result.message || "Manual exit failed");
+          return;
+        }
+        await refreshTrades();
+      } catch (err) {
+        alert("Manual exit failed - see console");
+        console.error(err);
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function renderOpenTrades(trades) {
+      const container = document.getElementById("openTradesContainer");
+      if (trades.length === 0) {
+        container.innerHTML = '<div class="empty">No open paper trades yet. They\'re created automatically from Buy/Sell alerts.</div>';
+        return;
+      }
+      const rows = trades.map(t => {
+        const pnlClass = t.unrealized_pnl > 0 ? "pnl-pos" : (t.unrealized_pnl < 0 ? "pnl-neg" : "");
+        const pnlText = (t.unrealized_pnl === null || t.unrealized_pnl === undefined) ? "-" : t.unrealized_pnl;
+        const pctText = (t.unrealized_pnl_pct === null || t.unrealized_pnl_pct === undefined) ? "-" : t.unrealized_pnl_pct + "%";
+        return `
+        <tr>
+          <td>${escapeHtml(t.symbol)}${t.paper_option_label ? `<div class="sub" style="font-size:11px;" title="${escapeHtml(t.paper_option_label)}">${escapeHtml(t.paper_option_label)}</div>` : ""}</td>
+          <td class="direction-${t.direction.toLowerCase()}">${t.direction}</td>
+          <td>${t.quantity}</td>
+          <td>${t.entry_price}</td>
+          <td>${(t.entry_time || "").slice(0, 19)}</td>
+          <td>${t.last_checked_price || "-"}</td>
+          <td class="${pnlClass}">${pnlText}</td>
+          <td class="${pnlClass}">${pctText}</td>
+          <td>${(t.last_checked_time || "").slice(0, 19)}</td>
+          <td class="error-note">${escapeHtml(t.last_error || "")}</td>
+          <td>
+            <span class="live-badge live-${t.live_status || 'NONE'}">${t.live_status || 'NONE'}</span>
+            ${t.live_option_label ? `<div class="sub" style="font-size:11px;" title="${escapeHtml(t.live_option_label)}">${escapeHtml(t.live_option_label)} &middot; ${t.live_quantity} qty</div>` : (t.live_quantity ? `<div class="sub" style="font-size:11px;">${t.live_quantity} qty</div>` : "")}
+            ${t.live_error ? `<div class="error-note" title="${escapeHtml(t.live_error)}">${escapeHtml(t.live_error.slice(0, 30))}${t.live_error.length > 30 ? "..." : ""}</div>` : ""}
+          </td>
+          <td><button class="secondary" style="padding: 5px 10px; font-size: 11px;" onclick="manualExit(${t.id})">Exit Now</button></td>
+        </tr>
+      `;
+      }).join("");
+      container.innerHTML = `
+        <table>
+          <tr><th>Symbol</th><th>Direction</th><th>Qty</th><th>Entry price</th><th>Entry time</th>
+              <th>Last checked price</th><th>Unrealized P&amp;L (Rs)</th><th>P&amp;L %</th><th>Last checked</th><th>Note</th><th>Live</th><th></th></tr>
+          ${rows}
+        </table>
+      `;
+    }
+
+    function renderClosedTrades(trades) {
+      const container = document.getElementById("closedTradesContainer");
+      if (trades.length === 0) {
+        container.innerHTML = '<div class="empty">No closed trades yet.</div>';
+        return;
+      }
+      const rows = trades.map(t => {
+        const pnlClass = t.pnl > 0 ? "pnl-pos" : (t.pnl < 0 ? "pnl-neg" : "");
+        const pctText = (t.pnl_pct === null || t.pnl_pct === undefined) ? "-" : t.pnl_pct + "%";
+        return `
+          <tr>
+            <td>${escapeHtml(t.symbol)}${t.paper_option_label ? `<div class="sub" style="font-size:11px;" title="${escapeHtml(t.paper_option_label)}">${escapeHtml(t.paper_option_label)}</div>` : ""}</td>
+            <td class="direction-${t.direction.toLowerCase()}">${t.direction}</td>
+            <td>${t.quantity}</td>
+            <td>${t.entry_price}</td>
+            <td>${t.exit_price}</td>
+            <td class="${pnlClass}">${t.pnl}</td>
+            <td class="${pnlClass}">${pctText}</td>
+            <td>${t.balance_after}</td>
+            <td>${escapeHtml(t.exit_reason || "")}</td>
+            <td>${(t.exit_time || "").slice(0, 19)}</td>
+            <td>
+              <span class="live-badge live-${t.live_status || 'NONE'}">${t.live_status || 'NONE'}</span>
+              ${t.live_option_label ? `<div class="sub" style="font-size:11px;" title="${escapeHtml(t.live_option_label)}">${escapeHtml(t.live_option_label)} &middot; ${t.live_quantity} qty</div>` : (t.live_quantity ? `<div class="sub" style="font-size:11px;">${t.live_quantity} qty</div>` : "")}
+            </td>
+          </tr>
+        `;
+      }).join("");
+      container.innerHTML = `
+        <table>
+          <tr><th>Symbol</th><th>Direction</th><th>Qty</th><th>Entry</th><th>Exit</th>
+              <th>P&amp;L (Rs)</th><th>P&amp;L %</th><th>Balance after (Rs)</th><th>Exit reason</th><th>Exit time</th><th>Live</th></tr>
+          ${rows}
+        </table>
+      `;
+    }
+
+    async function refreshTrades() {
+      try {
+        const res = await fetch("/api/paper-trading/data");
+        const data = await res.json();
+        renderOpenTrades(data.open);
+        renderClosedTrades(data.closed);
+        document.getElementById("statOpen").textContent = data.open.length;
+        document.getElementById("statClosed").textContent = data.closed.length;
+        const wins = data.closed.filter(t => (t.pnl || 0) > 0).length;
+        const winRate = data.closed.length ? ((wins / data.closed.length) * 100).toFixed(1) : 0;
+        document.getElementById("statWinRate").textContent = winRate + "%";
+        const totalPnl = data.closed.reduce((sum, t) => sum + (t.pnl || 0), 0);
+        const pnlEl = document.getElementById("statPnl");
+        pnlEl.textContent = totalPnl.toFixed(2);
+        pnlEl.classList.remove("pos", "neg");
+        if (totalPnl > 0) pnlEl.classList.add("pos");
+        if (totalPnl < 0) pnlEl.classList.add("neg");
+        if (data.current_capital !== undefined) {
+          document.getElementById("statCurrentCapital").textContent = data.current_capital;
+        }
+        if (data.live_available_funds !== undefined) {
+          document.getElementById("statLiveFunds").textContent =
+            data.live_available_funds === null ? "-" : data.live_available_funds;
+        }
+        if (data.live_open !== undefined) {
+          document.getElementById("statLiveOpen").textContent = data.live_open;
+        }
+        if (data.live_closed !== undefined) {
+          document.getElementById("statLiveClosed").textContent = data.live_closed;
+        }
+        if (data.live_pnl !== undefined) {
+          const liveEl = document.getElementById("statLivePnl");
+          liveEl.textContent = data.live_pnl;
+          liveEl.classList.remove("pos", "neg");
+          if (data.live_pnl > 0) liveEl.classList.add("pos");
+          if (data.live_pnl < 0) liveEl.classList.add("neg");
+        }
+      } catch (err) {
+        console.error("Refresh failed", err);
+      }
+    }
+
+    // Only checks/refreshes while this tab is actually open - by design,
+    // per your choice to keep the free Render tier (no background
+    // monitoring while the tab is closed).
+    setInterval(async () => {
+      await fetch("/api/paper-trading/check", { method: "POST" }).catch(() => {});
+      await refreshTrades();
+    }, 60000);
+  </script>
+</body>
+</html>
