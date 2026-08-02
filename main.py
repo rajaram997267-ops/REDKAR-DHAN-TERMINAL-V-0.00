@@ -745,7 +745,11 @@ def _load_instrument_master() -> None:
             exch = (row.get("EXCH_ID") or "").upper()
             instr = (row.get("INSTRUMENT") or "").upper()
             sec_id = row.get("SECURITY_ID")
-            tsym = (row.get("SYMBOL_NAME") or "").upper()
+            # UNDERLYING_SYMBOL holds the real short ticker (e.g. "ARE&M",
+            # matching how Chartink refers to a stock) - SYMBOL_NAME is the
+            # full company name instead (e.g. "AMARA RAJA ENERGY MOB LTD"),
+            # confirmed by comparing both fields in a live debug response.
+            tsym = (row.get("UNDERLYING_SYMBOL") or "").upper()
 
             if exch == "NSE" and instr == "EQUITY" and tsym and sec_id:
                 mapping[tsym] = sec_id
